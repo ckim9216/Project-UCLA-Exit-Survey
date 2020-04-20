@@ -1,0 +1,313 @@
+---
+title: "STAT 141 Final Project"
+subtitle: "Team Fail to be creative"
+author: "Shuangning Yang, Amy Kim"
+date: "3/12/2020"
+output: 
+  pdf_document: 
+    fig_height: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyr)
+library(factoextra)
+library(corrplot)
+library("tm")
+library("SnowballC")
+library("wordcloud")
+library("RColorBrewer")
+```
+
+# Variables of the study and how they were measured
+
+The dataset has 67 rows and 66 columns, and most of the columns could be combined together. For example, column 7-11 are indicators of levels of GPA. For example, column 7 represents whether the GPA is less than 2 (1 for yes and 0 for no). After combining the columns, there are 5 variables containing the demographic information:
+
+- gender: gender of the survey taker, male or female
+- comm_college: whether the surver taker transfered from community college
+- esl: whether English is the survery taker's second language
+- gpa: gpa range of the surver taker
+- postgrad: plans after graduation
+
+```{r import, message=FALSE, warning=FALSE, include=FALSE}
+# read data
+exit_survey <- read_csv("exit survey 2019 version two.csv")
+exit_survey <- data.frame(exit_survey)
+# data cleaning
+exit_survey = exit_survey %>% select(-c(1:12))
+exit_survey
+## Demographic information
+dat <- data.frame(id=1:nrow(exit_survey))
+dat$gender <- factor(exit_survey[,1], levels=c(1,0),
+                     labels=c("Male", "Femal"))
+dat$comm_college <- factor(exit_survey[,3], levels=c(1,0),
+                           labels=c("Yes","No"))
+dat$esl <- factor(exit_survey[,5], levels=c(1,0),
+                  labels=c("Yes","No"))
+GPA <- 1 * exit_survey[,7] + 
+  2 * exit_survey[,8] + 
+  3 * exit_survey[,9] + 
+  4 * exit_survey[,10] + 
+  5 * exit_survey[,11]
+GPA <- factor(GPA, levels = 1:5,
+              labels = c("less than 2",
+                         "2 to 2.5", 
+                         "2.5 to 3", 
+                         "3 to 3.5", 
+                         "more than 3.5"))
+dat$gpa <- GPA
+after_grad <- 1 * exit_survey[,12] +
+  2 * exit_survey[,13] + 
+  3 * exit_survey[,14] + 
+  4 * exit_survey[,15]
+after_grad <- factor(after_grad, levels=1:4,
+                     labels=c("Go to work",
+                              "Go to graduate school",
+                              "Go to work and then to graduate school",
+                              "Other/Not sure"))
+after_grad[which(is.na(after_grad))] <- "Other/Not sure"
+dat$postgrad <- after_grad
+```
+
+Part II of the survey asked for the survey taker's self-evaluation. Communication skills are Q1-Q24. Data management skills are Q25-Q28. Statistical skills Q29-Q32. Communication skills are Q33-Q48. Open questions are Q49-Q51. Responses of the questions are:
+
+- 5: excellent
+- 4: very good
+- 3: good
+- 2: average
+- 1: poor
+
+
+
+```{r include=FALSE}
+soft_skill <- exit_survey[,16:39] %>% na.omit()
+colnames(soft_skill) <- paste0("Q",1:24)
+data_skill <- exit_survey[,40:43] %>% na.omit()
+colnames(data_skill) <- paste0("Q",25:28)
+stat_skill <- exit_survey[,44:47] %>% na.omit()
+colnames(stat_skill) <- paste0("Q",29:32)
+comm_skill <- exit_survey[,48:63] %>% na.omit()
+colnames(comm_skill) <- paste0("Q",33:48)
+```
+
+# Exploratory data analysis
+
+
+Demographic information:
+
+
+|  gender || comm_college || esl  ||  gpa   ||     postgrad ||
+|:--------:|:-|:------------:|:-|:------:|:-|:-------:|:-|:--------:|:-|
+|Male:| 35 |Yes: |11 |Yes: |37 |less than 2: |0 |Go to work: |21  |
+| || ||| |2 to 2.5: |1 |Go to graduate school: |14  |
+|      | |  |  | | |2.5 to 3: |7 |Go to work and then to graduate school: |17  |
+|Femal: |32   | No: |56  |No: |30  |3 to 3.5: |26 |Other/Not sure: |15  |
+|  | |  | | ||more than 3.5: |33 |  |                                    |
+
+The histograms for data management questions as an exmaple:
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# ggplot(gather(soft_skill), aes(value)) + 
+#   geom_histogram(bins = 7) + 
+#   facet_wrap(~key, scales = 'free_x') + 
+#   ggtitle("Soft skills")
+ggplot(gather(data_skill), aes(value)) + 
+  geom_histogram(bins = 7) + 
+  facet_wrap(~key, scales = 'free_x') + 
+  ggtitle("Data management skills")
+# ggplot(gather(stat_skill), aes(value)) + 
+#   geom_histogram(bins = 7) + 
+#   facet_wrap(~key, scales = 'free_x') + 
+#   ggtitle("Statistical skills")
+# ggplot(gather(comm_skill), aes(value)) + 
+#   geom_histogram(bins = 7) + 
+#   facet_wrap(~key, scales = 'free_x') + 
+#   ggtitle("Communication skills")
+```
+
+# PCA analysis
+
+We applied PCA analysis on the soft skills, data management skills, statistical skills and communication skills respectively.
+
+
+```{r echo=FALSE}
+soft.pca <- prcomp(as.matrix(soft_skill), center = T, scale. = T)
+soft.score <- predict(soft.pca, soft_skill)[,1]
+fviz_eig(soft.pca, main="Scree plot for Soft skills")
+```
+For the soft skills, we chose the first principal component as a new variable representing the soft skill score ranged from -5 to 12.
+
+```{r include=FALSE}
+data.pca <- prcomp(as.matrix(data_skill), center = T, scale. = T)
+data.score <- predict(data.pca, data_skill)[,1]
+fviz_eig(data.pca, main="Scree plot for Data Management skills")
+```
+For the data management skills, we chose the first principal component as a new variable representing the data management skill score ranged from -3 to 5. 
+
+
+```{r include=FALSE}
+stat.pca <- prcomp(as.matrix(stat_skill), center = T, scale. = T)
+stat.score <- predict(stat.pca, stat_skill)[,1]
+fviz_eig(stat.pca, main="Scree plot for Statistical skills")
+```
+For the statistical skills, we chose the first principal component as a new variable representing the statistical skill score ranged from -5 to 3. 
+
+
+```{r include=FALSE}
+comm.pca <- prcomp(as.matrix(comm_skill), center = T, scale. = T)
+comm.score <- predict(comm.pca, comm_skill)[,1]
+fviz_eig(comm.pca, main="Scree plot for Communication skills")
+```
+
+For the communication skills, we chose the first principal component as a new variable representing the communication skill score ranged from -5 to 10. 
+
+```{r echo=FALSE}
+dat$soft_score <- 0
+dat$soft_score[1:3] <- soft.score[1:3]
+dat$soft_score[4] <- NA
+dat$soft_score[5:67] <- soft.score[4:66]
+dat$data_score <- data.score
+dat$stat_score <- stat.score
+dat$comm_score <- comm.score
+dat %>% select(soft_score, data_score, stat_score, comm_score) %>% 
+  na.omit() %>% 
+  cor %>%
+  corrplot(type="lower", method="number")
+```
+
+The correlation coefficients of the four scores are all larger in absolute value. These scores are highly correlated.
+
+# Statistical model
+
+First, we want to investigate whether the soft skill score varies among different groups. The response variable is the soft skill score, and the explanatory variables are gender, whether transfered from community college, whether English is the second language, and the gpa lavel. We fitted a multiple linear regression model and used ANOVA to investigate which variables are significant.
+
+
+```{r echo=FALSE}
+lm1 <- lm(soft_score~gender+comm_college+esl+gpa, data=dat)
+```
+
+|         |Df     | p value|
+|:--------|:--------|----:|
+|gender  |1  |   0.84|
+|comm_college    |1    |   0.06|
+|esl    |1    |   0.95|
+|gpa     |3     |   0.00|
+
+Based on the ANOVA table, gender, whether transfered from community college and whether English is the second language are not significant. However, GPA level is a significant variable. This suggests that the soft skill score varies among different GPA groups, but is not related to gender, whether transfered from community college or whether English is the second language.
+
+
+Then, we want to investigate whether the data management skill score varies among different groups. The response variable is the data management skill score, and the explanatory variables are gender, whether transfered from community college, whether English is the second language, and the gpa lavel. We fitted a multiple linear regression model and used ANOVA to investigate which variables are significant.
+
+
+```{r echo=FALSE}
+lm1 <- lm(data_score~gender+comm_college+esl+gpa, data=dat)
+```
+
+|         |Df     | p value|
+|:--------|:--------|----:|
+|gender  |1  |   0.92|
+|comm_college    |1    |   0.18|
+|esl    |1    |   0.61|
+|gpa     |3     |   0.03|
+
+Based on the ANOVA table, gender, whether transfered from community college and whether English is the second language are not significant. However, GPA level is a significant variable. This suggests that the data management skill score varies among different GPA groups, but is not related to gender, whether transfered from community college or whether English is the second language.
+
+
+Then, we want to investigate whether the statistical skill score varies among different groups. The response variable is the statistical skill score, and the explanatory variables are gender, whether transfered from community college, whether English is the second language, and the gpa lavel. We fitted a multiple linear regression model and used ANOVA to investigate which variables are significant.
+
+
+```{r echo=FALSE}
+lm1 <- lm(stat_score~gender+comm_college+esl+gpa, data=dat)
+```
+
+|         |Df     | p value|
+|:--------|:--------|----:|
+|gender  |1  |   0.60|
+|comm_college    |1    |   0.22|
+|esl    |1    |   0.15|
+|gpa     |3     |   0.10|
+
+Based on the ANOVA table, all variables are not significant at 0.05 level. This suggests that the statistical skill score is not related to gender, GPA, whether transfered from community college or whether English is the second language.
+
+Finally, we want to investigate whether the communication skill score varies among different groups. The response variable is the communication skill score, and the explanatory variables are gender, whether transfered from community college, whether English is the second language, and the gpa lavel. We fitted a multiple linear regression model and used ANOVA to investigate which variables are significant.
+
+
+```{r echo=FALSE}
+lm1 <- lm(comm_score~gender+comm_college+esl+gpa, data=dat)
+```
+
+|         |Df     | p value|
+|:--------|:--------|----:|
+|gender  |1  |   0.86|
+|comm_college    |1    |   0.05|
+|esl    |1    |   0.60|
+|gpa     |3     |   0.02|
+
+Based on the ANOVA table, gender and whether English is the second language are not significant. However, GPA level andwhether transfered from community college are significant variables. This suggests that the communication skill score varies among different GPA groups. It is related to whether transfered from community college, but not related to gender or whether English is the second language.
+
+
+# Summary of the results
+
+The soft skill score and data management skill score vary among different GPA groups, but are not related to gender, whether transfered from community college or whether English is the second language. On the other hand, the statistical skill score is not related to gender, GPA, whether transfered from community college or whether English is the second language. Furthermore, The communication skill score varies among different GPA groups. It is related to whether transfered from community college, but not related to gender or whether English is the second language.
+
+
+# Word cloud
+
+We removed the special characters, stop words and find that the most frequent words are:
+
+|         |word     | freq|
+|:--------|:--------|----:|
+|project  |project  |   46|
+|class    |class    |   39|
+|group    |group    |   33|
+|work     |work     |   31|
+|course   |course   |   29|
+|data     |data     |   29|
+|learned  |learned  |   29|
+|think    |think    |   29|
+|projects |projects |   27|
+|really   |really   |   27|
+
+Here is a word cloud plot
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+text <- c(exit_survey[,64:66])
+docs <- Corpus(VectorSource(text))
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "/")
+docs <- tm_map(docs, toSpace, "@")
+docs <- tm_map(docs, toSpace, "\\|")
+# Convert the text to lower case
+docs <- tm_map(docs, content_transformer(tolower))
+# Remove numbers
+docs <- tm_map(docs, removeNumbers)
+# Remove english common stopwords
+docs <- tm_map(docs, removeWords, stopwords("english"))
+# Remove your own stop word
+# specify your stopwords as a character vector
+docs <- tm_map(docs, removeWords, c("blabla1", "blabla2")) 
+# Remove punctuations
+docs <- tm_map(docs, removePunctuation)
+# Eliminate extra white spaces
+docs <- tm_map(docs, stripWhitespace)
+# Text stemming
+# docs <- tm_map(docs, stemDocument)
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+wordcloud(words = d$word, freq = d$freq, min.freq = 1,
+          max.words=200, random.order=FALSE, rot.per=0.35, 
+          colors=brewer.pal(8, "Dark2"))
+```
+
+
+
+
+
+
+
+
